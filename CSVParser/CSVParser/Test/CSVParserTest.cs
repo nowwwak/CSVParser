@@ -13,11 +13,15 @@ namespace CSVParser.Test
     [TestFixture]
     public class CSVParserTest
     {
-        private static string GetAssemblyPath()
+        static object[][] testCasesFail = new[]
         {
-            var assembly = Assembly.GetExecutingAssembly();
-            return new DirectoryInfo(Path.GetDirectoryName(assembly.Location)).FullName;
-        }
+            //test case - invalid file format, missing DQuote character
+            new object[]
+            {
+                @"Test\Files\invalidMissingDQuote.csv",
+                Encoding.ASCII
+            }
+        };
 
         static object[][] testCases = new[]
         {
@@ -99,9 +103,9 @@ namespace CSVParser.Test
         };
 
         [TestCaseSource("testCases")]
-        public void ReadTest(string inputFilePath, string[][] expectedCSVFields, Encoding encoding)
+        public void TestRead(string inputFilePath, string[][] expectedCSVFields, Encoding encoding)
         {
-            CSVFileParser parser = new CSVFileParser(Path.Combine(GetAssemblyPath(), inputFilePath), encoding);
+            CSVFileParser parser = new CSVFileParser(Path.Combine(Helper.GetAssemblyPath(), inputFilePath), encoding);
             CommaSeparatedValues csv = parser.Read();
 
             Assert.AreEqual(expectedCSVFields.Length > 0 ? expectedCSVFields[0].Length : 0, csv.ColumnsCount);
@@ -116,8 +120,11 @@ namespace CSVParser.Test
             }
         }
 
-
-        //TODO: add invalid files tests
-        //TOOD: add ToString method tests
+        [TestCaseSource("testCasesFail")]
+        public void TestReadFail(string inputFilePath, Encoding encoding)
+        {
+            CSVFileParser parser = new CSVFileParser(Path.Combine(Helper.GetAssemblyPath(), inputFilePath), encoding);
+            Assert.Throws(typeof(CSVFormatException), ()=> parser.Read());   
+        }
     }
 }

@@ -5,12 +5,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-/*
- * Supported encodings: ASCII, UTF-8, UNICODE
- * For all encodings \r\n is used as line separator
- * 
- */
-
 namespace CSVParser.Code
 {
     /// <summary>
@@ -39,7 +33,7 @@ namespace CSVParser.Code
         private List<string> row;
 
         /// <summary>
-        /// Sets initial values for shared fileds before reading file
+        /// Sets initial values for shared fileds before reading file.
         /// </summary>
         private void SetInitialValuesBeforRead()
         {
@@ -47,16 +41,6 @@ namespace CSVParser.Code
             currentColumnNumber = 1;
             currentRowNumber = 1;
             currentCharFromFile = null;
-        }
-
-        /// <summary>
-        /// Returns error message with information about current file position. 
-        /// </summary>
-        /// <param name="message">Input message.</param>
-        /// <returns></returns>
-        private string GetErrorMessage(string message)
-        {
-            return string.Format("{0}{1}", $"Error in line {currentRowNumber} col {currentColumnNumber}: ", message);
         }
 
         /// <summary>
@@ -68,7 +52,7 @@ namespace CSVParser.Code
             if (csvFields.RowsCount > 0)
             {
                 if (row.Count != csvFields.ColumnsCount)
-                    throw new Exception(GetErrorMessage("All rows must have same length as first row."));
+                    throw new CSVFormatException("All rows must have same length as first row.", currentRowNumber, currentColumnNumber);
             }
 
             csvFields.AddRow(row);
@@ -123,7 +107,7 @@ namespace CSVParser.Code
                 }
                 else if (nextChar == DQuote)
                 {
-                    throw new Exception(GetErrorMessage($"Invalid character '{nextChar}'."));
+                    throw new CSVFormatException($"Invalid character '{nextChar}'.",currentRowNumber, currentColumnNumber);
                 }
                 else
                 {
@@ -163,7 +147,7 @@ namespace CSVParser.Code
                     escapedField.Append(currentCharFromFile);
             }
 
-            throw new Exception(GetErrorMessage($"Invalid field, missing closing character: {DQuote}."));
+            throw new CSVFormatException($"Invalid field, missing closing character: {DQuote}.", currentRowNumber, currentColumnNumber);
 
         }
 
@@ -197,58 +181,68 @@ namespace CSVParser.Code
             bool canAddNewValue = true;//if true then we can add new field to CSV, else we can't add new field
             SetInitialValuesBeforRead();
 
-            using (StreamReader reader = new StreamReader(path, encoding))
+            try
             {
-                while (ReadNextCharacter(reader) != null)
+                using (StreamReader reader = new StreamReader(path, encoding))
                 {
-                    if (currentCharFromFile == DQuote)
+                    while (ReadNextCharacter(reader) != null)
                     {
-                        string val = ReadEscapedField(reader);
-                        if (canAddNewValue)
+                        if (currentCharFromFile == DQuote)
                         {
-                            row.Add(val);
-                            canAddNewValue = false;
+                            string val = ReadEscapedField(reader);
+                            if (canAddNewValue)
+                            {
+                                row.Add(val);
+                                canAddNewValue = false;
+                            }
+                            else
+                                throw new CSVFormatException("Invalid field. Probably missing field separator", currentRowNumber, currentColumnNumber);
+                        }
+                        else if (currentCharFromFile == Comma)
+                        {
+                            if (canAddNewValue)
+                                row.Add(string.Empty); 
+
+                            canAddNewValue = true;              
+                        }
+                        else if (currentCharFromFile == CR)
+                        {
+                            if (canAddNewValue)
+                                row.Add(string.Empty);                            
+
+                            AddRowToCSV(csv);
+                            canAddNewValue = true;
+
+                            //currenlty char is \r next should be \n
+                            ReadNextCharacter(reader);
+                            if (currentCharFromFile != LF)
+                                throw new CSVFormatException($"Expecting {CR} character.", currentRowNumber, currentColumnNumber);
                         }
                         else
-                            throw new Exception(GetErrorMessage("Invalid field. Probably missing field separator"));
+                        {
+                            string val = ReadNonEscapedField(reader);
+                            if (canAddNewValue)
+                            {
+                                row.Add(val);
+                                canAddNewValue = false;
+                            }
+                            else
+                                throw new CSVFormatException("Invalid field. Probably missing field separator.", currentRowNumber, currentColumnNumber);
+                        }
                     }
-                    else if (currentCharFromFile == Comma)
-                    {
-                        if (canAddNewValue)
-                            row.Add(string.Empty);//add empty value 
 
-                        canAddNewValue = true; //this is always true                    }
-                    }
-                    else if (currentCharFromFile == CR)
-                    {
-                        if (canAddNewValue)
-                            row.Add(string.Empty);//add empty value                            
-
+                    if (row.Count > 0)
                         AddRowToCSV(csv);
-                        canAddNewValue = true;
-
-                        //currenlty char is \r next should be \n
-                        ReadNextCharacter(reader);
-                        if (currentCharFromFile != LF)
-                            throw new Exception(GetErrorMessage($"Expecting {CR} character."));
-                    }
-                    else
-                    {
-                        string val = ReadNonEscapedField(reader);
-                        if (canAddNewValue)
-                        {
-                            row.Add(val);
-                            canAddNewValue = false;
-                        }
-                        else
-                            throw new Exception(GetErrorMessage("Invalid field. Probably missing field separator."));
-                    }
-                }
-
-                if (row.Count > 0)
-                    AddRowToCSV(csv);
+                } 
             }
-
+            catch(CSVFormatException)
+            {
+                throw;
+            }
+            catch(Exception ex)
+            {
+                throw new Exception("Error when reading input file. Check inner exception for details", ex);
+            }
             return csv;
         }
     }
